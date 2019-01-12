@@ -25,7 +25,6 @@ type App struct {
 }
 
 func (app *App) addRoute(route Route) {
-
 	if app.routes[route.Path] == nil {
 		app.routes[route.Path] = make(map[string]HandleFunc)
 	}
@@ -66,36 +65,32 @@ func (app *App) Router(routes ...Route) {
 	}
 }
 
-// Start initialize http server
-func (app *App) Start(address string) {
+// HandlerFunc is a HTTP handler function to be attached to http.HandleFunc
+func (app *App) HandlerFunc(w http.ResponseWriter, r *http.Request) {
+	log.Println(r.Method, r.URL.Path)
 
-	handleNotFound := func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		fmt.Fprintf(w, `{ "mesage": "%s" }`, "Not found "+r.Method+" "+r.URL.Path)
+	if app.routes[r.URL.Path] != nil || app.routes[r.URL.Path][r.Method] != nil {
+		app.routes[r.URL.Path][r.Method](w, r)
+		return
 	}
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-
-		log.Println(r.Method, r.URL.Path)
-
-		if app.routes[r.URL.Path] != nil || app.routes[r.URL.Path][r.Method] != nil {
-			app.routes[r.URL.Path][r.Method](w, r)
+	for pattern, handlers := range app.patterns {
+		rgx := regexp.MustCompile(pattern)
+		if rgx.MatchString(r.URL.Path) && handlers[r.Method] != nil {
+			handlers[r.Method](w, r)
 			return
 		}
+	}
 
-		for pattern, handlers := range app.patterns {
-			rgx := regexp.MustCompile(pattern)
-			if rgx.MatchString(r.URL.Path) && handlers[r.Method] != nil {
-				handlers[r.Method](w, r)
-				return
-			}
-		}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotFound)
+	fmt.Fprintf(w, `{ "mesage": "%s" }`, "Not found "+r.Method+" "+r.URL.Path)
+	return
+}
 
-		handleNotFound(w, r)
-		return
-	})
-
+// Start initialize http server
+func (app *App) Start(address string) {
+	http.HandleFunc("/", app.HandlerFunc)
 	fmt.Println("Start server at " + address)
 	http.ListenAndServe(address, nil)
 }

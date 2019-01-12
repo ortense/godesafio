@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
+	"strings"
 )
 
 // HandleFunc represent a http handler function
@@ -18,7 +20,8 @@ type Route struct {
 
 // App a abstraction of http server
 type App struct {
-	routes map[string]map[string]HandleFunc
+	routes   map[string]map[string]HandleFunc
+	patterns map[string]map[string]HandleFunc
 }
 
 func (app *App) addRoute(route Route) {
@@ -30,10 +33,36 @@ func (app *App) addRoute(route Route) {
 	app.routes[route.Path][route.Method] = route.Handler
 }
 
+func isRoutePattern(path string) bool {
+	rgx := regexp.MustCompile(".*\\/:\\w+.*")
+	return rgx.MatchString(path)
+}
+
+func createRoutePattern(path string) string {
+	wildcard := "([^/]+)"
+	matchParams := regexp.MustCompile(":" + wildcard)
+	rgx := strings.Replace(matchParams.ReplaceAllLiteralString(path, wildcard), "/", "\\/", -1)
+	return "^" + rgx + "$"
+}
+
+func (app *App) addPattern(route Route) {
+	pattern := createRoutePattern(route.Path)
+
+	if app.patterns[pattern] == nil {
+		app.patterns[pattern] = make(map[string]HandleFunc)
+	}
+
+	app.patterns[pattern][route.Method] = route.Handler
+}
+
 // Router adds variadic number of routes to app
 func (app *App) Router(routes ...Route) {
 	for _, route := range routes {
-		app.addRoute(route)
+		if isRoutePattern(route.Path) {
+			app.addPattern(route)
+		} else {
+			app.addRoute(route)
+		}
 	}
 }
 
@@ -50,12 +79,20 @@ func (app *App) Start(address string) {
 
 		log.Println(r.Method, r.URL.Path)
 
-		if app.routes[r.URL.Path] == nil || app.routes[r.URL.Path][r.Method] == nil {
-			handleNotFound(w, r)
+		if app.routes[r.URL.Path] != nil || app.routes[r.URL.Path][r.Method] != nil {
+			app.routes[r.URL.Path][r.Method](w, r)
 			return
 		}
 
-		app.routes[r.URL.Path][r.Method](w, r)
+		for pattern, handlers := range app.patterns {
+			rgx := regexp.MustCompile(pattern)
+			if rgx.MatchString(r.URL.Path) && handlers[r.Method] != nil {
+				handlers[r.Method](w, r)
+				return
+			}
+		}
+
+		handleNotFound(w, r)
 		return
 	})
 
@@ -65,6 +102,7 @@ func (app *App) Start(address string) {
 
 // CreateApp is a http app factory
 func CreateApp() App {
-	app := App{make(map[string]map[string]HandleFunc)}
-	return app
+	return App{
+		routes:   make(map[string]map[string]HandleFunc),
+		patterns: make(map[string]map[string]HandleFunc)}
 }

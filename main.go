@@ -17,6 +17,13 @@ func main() {
 			Handler: func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				fmt.Fprintf(w, `{ "message": "It's works!" }`)
+			}},
+		core.Route{
+			Path:   "/resource/:id",
+			Method: "GET",
+			Handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprintf(w, `{ "message": "/resource/:id match with `+r.URL.Path+`" }`)
 			}})
 
 	app.Start(":3000")

@@ -18,10 +18,16 @@ type Route struct {
 	Handler HandleFunc
 }
 
+type pattern struct {
+	rgx      *regexp.Regexp
+	path     string
+	handlers map[string]HandleFunc
+}
+
 // App a abstraction of http server
 type App struct {
 	routes   map[string]map[string]HandleFunc
-	patterns map[string]map[string]HandleFunc
+	patterns []pattern
 }
 
 func (app *App) addRoute(route Route) {
@@ -44,14 +50,33 @@ func createRoutePattern(path string) string {
 	return "^" + rgx + "$"
 }
 
-func (app *App) addPattern(route Route) {
-	pattern := createRoutePattern(route.Path)
-
-	if app.patterns[pattern] == nil {
-		app.patterns[pattern] = make(map[string]HandleFunc)
+func (app *App) findPatternByRoute(route Route) *pattern {
+	for _, pattern := range app.patterns {
+		if route.Path == pattern.path {
+			return &pattern
+		}
 	}
 
-	app.patterns[pattern][route.Method] = route.Handler
+	return nil
+}
+
+func (app *App) addPattern(route Route) {
+	p := app.findPatternByRoute(route)
+
+	if p != nil {
+		p.handlers[route.Method] = route.Handler
+		return
+	}
+
+	pt := pattern{
+		rgx:      regexp.MustCompile(createRoutePattern(route.Path)),
+		path:     route.Path,
+		handlers: make(map[string]HandleFunc)}
+
+	pt.handlers[route.Method] = route.Handler
+
+	app.patterns = append(app.patterns, pt)
+	return
 }
 
 // Router adds variadic number of routes to app
@@ -74,10 +99,9 @@ func (app *App) HandlerFunc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for pattern, handlers := range app.patterns {
-		rgx := regexp.MustCompile(pattern)
-		if rgx.MatchString(r.URL.Path) && handlers[r.Method] != nil {
-			handlers[r.Method](w, r)
+	for _, pattern := range app.patterns {
+		if pattern.rgx.MatchString(r.URL.Path) && pattern.handlers[r.Method] != nil {
+			pattern.handlers[r.Method](w, r)
 			return
 		}
 	}
@@ -99,5 +123,5 @@ func (app *App) Start(address string) {
 func CreateApp() App {
 	return App{
 		routes:   make(map[string]map[string]HandleFunc),
-		patterns: make(map[string]map[string]HandleFunc)}
+		patterns: []pattern{}}
 }

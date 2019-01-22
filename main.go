@@ -23,7 +23,14 @@ func main() {
 			Method: "GET",
 			Handler: func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				fmt.Fprintf(w, `{ "message": "/resource/:id match with `+r.URL.Path+`" }`)
+				fmt.Fprintf(w, `{ "message": "GET /resource/:id match with `+r.URL.Path+`" }`)
+			}},
+		core.Route{
+			Path:   "/resource/:id",
+			Method: "POST",
+			Handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprintf(w, `{ "message": "POST /resource/:id match with `+r.URL.Path+`" }`)
 			}})
 
 	app.Start(":3000")
